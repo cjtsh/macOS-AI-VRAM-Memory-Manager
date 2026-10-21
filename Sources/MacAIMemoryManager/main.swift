@@ -93,8 +93,9 @@ struct DashboardView: View {
                     Text("Unified memory, made understandable").font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Image(systemName: "sparkles.rectangle.stack.fill")
-                    .font(.title2).foregroundStyle(.purple)
+                Button("Quit") { NSApp.terminate(nil) }
+                    .buttonStyle(.borderless)
+                    .help("Quit AI Memory Manager before installing an update")
             }
 
             VStack(alignment: .leading, spacing: 12) {

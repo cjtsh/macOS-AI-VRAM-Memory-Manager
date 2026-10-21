@@ -22,7 +22,7 @@ This GPU setting is undocumented by Apple and may change or disappear in a macOS
 
 Download the latest DMG from [GitHub Releases](https://github.com/cjtsh/macOS-AI-VRAM-Memory-Manager/releases), open it, and drag **Mac AI Memory Manager.app** into Applications. Open it; the memory-chip icon appears in the menu bar. The release workflow signs and notarizes releases when the repository has the Apple Developer signing secrets configured. The app includes its terms and MIT license in the app's **Terms & License** view, and the DMG includes separate copies of both documents.
 
-Each successful GitHub Actions build also publishes a downloadable DMG artifact on that workflow run. To publish a versioned release, push a tag such as `v1.1.0`.
+Each successful GitHub Actions build also publishes a downloadable DMG artifact on that workflow run. To publish a versioned release, push a tag such as `v1.1.1`.
 
 ### Developer ID signing and notarization
 
