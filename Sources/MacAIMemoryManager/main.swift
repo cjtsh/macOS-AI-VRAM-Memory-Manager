@@ -29,7 +29,7 @@ final class MemoryMonitor: ObservableObject {
     @Published private(set) var totalBytes = ProcessInfo.processInfo.physicalMemory
     @Published private(set) var gpuWorkingSet: UInt64?
     @Published private(set) var gpuName = "Metal GPU"
-    @Published private(set) var wiredLimit: UInt64?
+    @Published private(set) var wiredLimitMiB: Int32?
     @Published private(set) var updatedAt = Date()
 
     private var timer: Timer?
@@ -61,12 +61,12 @@ final class MemoryMonitor: ObservableObject {
             gpuName = device.name
             gpuWorkingSet = device.recommendedMaxWorkingSetSize
         }
-        var value: UInt64 = 0
-        var size = MemoryLayout<UInt64>.size
-        if sysctlbyname("iogpu.wired_mem_limit", &value, &size, nil, 0) == 0 {
-            wiredLimit = value
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        if sysctlbyname("iogpu.wired_limit_mb", &value, &size, nil, 0) == 0, value >= 0 {
+            wiredLimitMiB = value
         } else {
-            wiredLimit = nil
+            wiredLimitMiB = nil
         }
         updatedAt = Date()
     }
@@ -85,6 +85,7 @@ struct DashboardView: View {
     }
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -118,9 +119,11 @@ struct DashboardView: View {
                     .font(.headline)
                 metric("GPU", value: monitor.gpuName)
                 metric("Metal recommended working set", value: monitor.gpuWorkingSet.map(format) ?? "Unavailable")
-                metric("GPU wired memory limit", value: monitor.wiredLimit.map { $0 == 0 ? "System managed" : format($0 * 1_048_576) } ?? "Not exposed by this macOS")
+                metric("GPU wired-memory ceiling", value: monitor.wiredLimitMiB.map { $0 == 0 ? "System managed" : format(UInt64($0) * 1_048_576) } ?? "Not exposed by this macOS")
             }
             .padding(16).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+
+            MemoryLimitControls(monitor: monitor)
 
             VStack(alignment: .leading, spacing: 8) {
                 Label("What this means", systemImage: "info.circle").font(.headline)
@@ -149,6 +152,7 @@ struct DashboardView: View {
             }
         }
         .padding(20)
+        }
         .sheet(isPresented: $showingLegal) { LegalInformationView() }
         .alert("AI model memory", isPresented: $showingExplanation) {
             Button("Got it", role: .cancel) { }
@@ -172,6 +176,228 @@ struct DashboardView: View {
     private func format(_ bytes: UInt64) -> String {
         ByteCountFormatStyle(style: .memory, allowedUnits: [.gb, .tb], spellsOutZero: false)
             .format(Int64(clamping: bytes))
+    }
+}
+
+private struct MemoryLimitPreset: Identifiable {
+    let percent: Int
+    let gibibytes: Int
+    var megabytes: Int32 { Int32(gibibytes * 1024) }
+    var id: Int32 { megabytes }
+    var title: String { "\(percent)% — \(gibibytes) GiB" }
+}
+
+private struct MemoryLimitControls: View {
+    @ObservedObject var monitor: MemoryMonitor
+    @State private var requestedMiB: Int32 = 0
+    @State private var customGiB = 64.0
+    @State private var initialized = false
+    @State private var showingConfirmation = false
+    @State private var isApplying = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+
+    private var totalGiB: Double {
+        Double(monitor.totalBytes) / 1_073_741_824
+    }
+
+    private var maximumGiB: Double {
+        max(1, floor(totalGiB * 0.95))
+    }
+
+    private var presets: [MemoryLimitPreset] {
+        var seen = Set<Int32>()
+        return [75, 80, 85, 90, 95].compactMap { percent in
+            let gib = Int(floor(totalGiB * Double(percent) / 100))
+            guard gib > 0 else { return nil }
+            let preset = MemoryLimitPreset(percent: percent, gibibytes: gib)
+            guard seen.insert(preset.megabytes).inserted else { return nil }
+            return preset
+        }
+    }
+
+    private var requestedGiB: Double {
+        Double(requestedMiB) / 1024
+    }
+
+    private var currentLimitText: String {
+        guard let value = monitor.wiredLimitMiB else { return "Not available" }
+        guard value != 0 else { return "System managed" }
+        return String(format: "%.1f GiB", Double(value) / 1024)
+    }
+
+    private var requestText: String {
+        requestedMiB == 0 ? "System managed" : String(format: "%.1f GiB", requestedGiB)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("GPU memory ceiling", systemImage: "slider.horizontal.3")
+                .font(.headline)
+            Text("Choose the maximum memory macOS may wire for the GPU. This is a ceiling, not a reservation or a speed boost.")
+                .font(.callout).foregroundStyle(.secondary)
+
+            if monitor.wiredLimitMiB == nil {
+                Label("This macOS does not expose a supported control here.", systemImage: "exclamationmark.circle")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else {
+                Picker("Preset", selection: $requestedMiB) {
+                    Text("System Managed").tag(Int32(0))
+                    ForEach(presets) { preset in
+                        Text(preset.title).tag(preset.megabytes)
+                    }
+                }
+                .onChange(of: requestedMiB) { _, value in
+                    guard value > 0 else { return }
+                    customGiB = min(maximumGiB, max(1, (Double(value) / 1024).rounded()))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Custom ceiling")
+                        Spacer()
+                        Text(String(format: "%.0f GiB", customGiB))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $customGiB, in: 1...maximumGiB, step: 1) { Text("Custom GPU memory ceiling") }
+                        .onChange(of: customGiB) { _, value in
+                            requestedMiB = Int32(value) * 1024
+                        }
+                }
+
+                HStack {
+                    Text("Current setting")
+                    Spacer()
+                    Text(currentLimitText).foregroundStyle(.secondary)
+                }
+                .font(.callout)
+
+                if requestedGiB > totalGiB * 0.90 {
+                    Label("High ceiling: macOS and other apps have less memory headroom. This can make the Mac unresponsive.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+
+                HStack {
+                    Button(isApplying ? "Applying…" : "Apply for This Session") {
+                        showingConfirmation = true
+                    }
+                    .disabled(isApplying || requestedMiB == monitor.wiredLimitMiB)
+
+                    Spacer()
+
+                    Button("Reset to System Managed") {
+                        requestedMiB = 0
+                        showingConfirmation = true
+                    }
+                    .disabled(isApplying || monitor.wiredLimitMiB == 0)
+                }
+
+                if let successMessage {
+                    Label(successMessage, systemImage: "checkmark.circle.fill")
+                        .font(.caption).foregroundStyle(.green)
+                }
+                if let errorMessage {
+                    Label(errorMessage, systemImage: "xmark.circle.fill")
+                        .font(.caption).foregroundStyle(.red)
+                }
+
+                Text("Changes require administrator approval and last until restart. This macOS GPU setting is undocumented and may change in a future update.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(16)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+        .onAppear {
+            guard !initialized else { return }
+            if let value = monitor.wiredLimitMiB {
+                requestedMiB = value
+                if value > 0 { customGiB = min(maximumGiB, max(1, Double(value) / 1024)) }
+                else { customGiB = min(64, maximumGiB) }
+            }
+            initialized = true
+        }
+        .confirmationDialog("Apply GPU memory ceiling?", isPresented: $showingConfirmation, titleVisibility: .visible) {
+            Button("Apply \(requestText)", role: .destructive) {
+                applySelection()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This changes the system-wide GPU wired-memory ceiling for this session. It does not reserve memory, and a high value can leave too little headroom for macOS, causing slowdowns, hangs, forced restarts, or data loss. The change resets to system-managed after restart. Continue only if you understand the risk.")
+        }
+    }
+
+    private func applySelection() {
+        isApplying = true
+        errorMessage = nil
+        successMessage = nil
+        let value = requestedMiB
+
+        Task {
+            do {
+                try await PrivilegedSysctl.setWiredLimit(mebibytes: value)
+                monitor.refresh()
+                guard monitor.wiredLimitMiB == value else {
+                    throw NSError(domain: "MemoryLimit", code: 1, userInfo: [NSLocalizedDescriptionKey: "macOS did not report the requested value after applying it. The setting may not be supported on this system."])
+                }
+                isApplying = false
+                successMessage = value == 0 ? "System-managed mode restored." : "GPU ceiling updated for this session."
+            } catch {
+                isApplying = false
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+private enum PrivilegedSysctl {
+    static func setWiredLimit(mebibytes: Int32) async throws {
+        guard mebibytes >= 0 else { throw SysctlError.invalidValue }
+        let command = "/usr/sbin/sysctl -w iogpu.wired_limit_mb=\(mebibytes)"
+        let script = "do shell script \"\(command)\" with administrator privileges"
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = ["-e", script]
+                let output = Pipe()
+                let errors = Pipe()
+                process.standardOutput = output
+                process.standardError = errors
+
+                do {
+                    try process.run()
+                    let stdout = output.fileHandleForReading.readDataToEndOfFile()
+                    let stderr = errors.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+                    guard process.terminationStatus == 0 else {
+                        let outputText = String(data: stderr.isEmpty ? stdout : stderr, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let message = outputText.flatMap { $0.isEmpty ? nil : $0 }
+                            ?? "Administrator authorization was cancelled or the setting could not be changed."
+                        continuation.resume(throwing: SysctlError.commandFailed(message))
+                        return
+                    }
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private enum SysctlError: LocalizedError {
+        case invalidValue
+        case commandFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidValue:
+                return "Choose a non-negative GPU memory ceiling."
+            case .commandFailed(let message):
+                return message
+            }
+        }
     }
 }
 
