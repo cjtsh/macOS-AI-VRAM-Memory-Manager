@@ -12,40 +12,44 @@ jobs:
     runs-on: macos-15
     permissions:
       contents: write
+    env:
+      SIGNING_CERT_P12: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 }}
+      SIGNING_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.BUILD_KEYCHAIN_PASSWORD }}
+      SIGNING_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Package app
         run: bash scripts/package-app.sh
       - name: Import Developer ID certificate
-        if: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 != '' }}
-        env:
-          CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.BUILD_KEYCHAIN_PASSWORD }}
+        if: ${{ env.SIGNING_CERT_P12 != '' && env.SIGNING_CERT_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.SIGNING_IDENTITY != '' }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          echo -n "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          echo -n "$SIGNING_CERT_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$RUNNER_TEMP/developer-id.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/developer-id.p12" -P "$SIGNING_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
       - name: Sign app with Developer ID
-        if: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 != '' }}
-        env:
-          SIGNING_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
+        if: ${{ env.SIGNING_CERT_P12 != '' && env.SIGNING_CERT_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.SIGNING_IDENTITY != '' }}
         run: |
           codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" "dist/Mac AI Memory Manager.app"
           codesign --verify --deep --strict --verbose=2 "dist/Mac AI Memory Manager.app"
+      - name: Notarize and staple app
+        if: ${{ env.SIGNING_CERT_P12 != '' && env.SIGNING_CERT_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.SIGNING_IDENTITY != '' && env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+        run: |
+          ditto -c -k --keepParent "dist/Mac AI Memory Manager.app" "$RUNNER_TEMP/mac-ai-memory-manager-notary.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/mac-ai-memory-manager-notary.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+          xcrun stapler staple "dist/Mac AI Memory Manager.app"
       - name: Create DMG
         run: bash scripts/package-dmg.sh
       - name: Notarize and staple DMG
-        if: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        if: ${{ env.SIGNING_CERT_P12 != '' && env.SIGNING_CERT_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.SIGNING_IDENTITY != '' && env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_SPECIFIC_PASSWORD != '' }}
         run: |
           xcrun notarytool submit "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
           xcrun stapler staple "dist/Mac AI Memory Manager.app"
