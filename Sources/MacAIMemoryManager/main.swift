@@ -4,33 +4,59 @@ import SwiftUI
 
 @main
 struct MacAIMemoryManagerApp: App {
-    @StateObject private var monitor = MemoryMonitor()
+    @NSApplicationDelegateAdaptor(MemoryManagerAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
-            DashboardView(monitor: monitor)
+            DashboardView(monitor: .shared)
                 .frame(width: 360)
         } label: {
             Label("Memory", systemImage: "memorychip")
         }
         .menuBarExtraStyle(.window)
 
-        WindowGroup("AI Memory Manager") {
-            DashboardView(monitor: monitor)
-                .frame(minWidth: 520, minHeight: 560)
+    }
+}
+
+@MainActor
+final class MemoryManagerAppDelegate: NSObject, NSApplicationDelegate {
+    private var dashboardWindow: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        showDashboard()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showDashboard()
+        return true
+    }
+
+    func showDashboard() {
+        if dashboardWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "AI Memory Manager"
+            window.contentViewController = NSHostingController(
+                rootView: DashboardView(monitor: .shared)
+                    .frame(minWidth: 520, minHeight: 560)
+            )
+            window.center()
+            dashboardWindow = window
         }
-        .defaultSize(width: 560, height: 640)
-        .commands {
-            CommandGroup(replacing: .appTermination) {
-                Button("Quit AI Memory Manager") { NSApp.terminate(nil) }
-                    .keyboardShortcut("q")
-            }
-        }
+
+        dashboardWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
 @MainActor
 final class MemoryMonitor: ObservableObject {
+    static let shared = MemoryMonitor()
+
     @Published private(set) var usedBytes: UInt64 = 0
     @Published private(set) var totalBytes = ProcessInfo.processInfo.physicalMemory
     @Published private(set) var gpuWorkingSet: UInt64?
@@ -40,7 +66,7 @@ final class MemoryMonitor: ObservableObject {
 
     private var timer: Timer?
 
-    init() {
+    private init() {
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
