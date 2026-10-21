@@ -77,6 +77,7 @@ final class MemoryMonitor: ObservableObject {
 struct DashboardView: View {
     @ObservedObject var monitor: MemoryMonitor
     @State private var showingExplanation = false
+    @State private var showingLegal = false
 
     private var fraction: Double {
         guard monitor.totalBytes > 0 else { return 0 }
@@ -137,8 +138,18 @@ struct DashboardView: View {
                 Button { monitor.refresh() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
                     .buttonStyle(.borderless)
             }
+
+            HStack {
+                Label("Use at your own risk", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Terms & License") { showingLegal = true }
+                    .font(.caption)
+                    .buttonStyle(.link)
+            }
         }
         .padding(20)
+        .sheet(isPresented: $showingLegal) { LegalInformationView() }
         .alert("AI model memory", isPresented: $showingExplanation) {
             Button("Got it", role: .cancel) { }
         } message: {
@@ -161,5 +172,37 @@ struct DashboardView: View {
     private func format(_ bytes: UInt64) -> String {
         ByteCountFormatStyle(style: .memory, allowedUnits: [.gb, .tb], spellsOutZero: false)
             .format(Int64(clamping: bytes))
+    }
+}
+
+private struct LegalInformationView: View {
+    private var terms: AttributedString { Self.bundledText(named: "TERMS") }
+    private var license: AttributedString { Self.bundledText(named: "LICENSE") }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Terms of Use & Disclaimer").font(.title2.bold())
+                Text(terms)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                Divider()
+                Text("MIT License").font(.title2.bold())
+                Text(license)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(24)
+        }
+        .frame(minWidth: 540, minHeight: 580)
+    }
+
+    private static func bundledText(named name: String) -> AttributedString {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "md"),
+              let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            return AttributedString("The \(name).md file is included with the source and disk image.")
+        }
+        return (try? AttributedString(markdown: contents)) ?? AttributedString(contents)
     }
 }

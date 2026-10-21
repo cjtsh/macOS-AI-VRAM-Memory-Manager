@@ -17,9 +17,9 @@ This app is read-only. It does not run privileged commands, alter kernel setting
 
 ## Download and run
 
-Download the latest DMG from [GitHub Releases](https://github.com/cjtsh/macOS-AI-VRAM-Memory-Manager/releases), open it, and drag **Mac AI Memory Manager.app** into Applications. Open it; the memory-chip icon appears in the menu bar. The release workflow can sign and notarize the app when the repository has the Apple Developer signing secrets configured; without them, it produces an unsigned DMG that Gatekeeper may block.
+Download the latest DMG from [GitHub Releases](https://github.com/cjtsh/macOS-AI-VRAM-Memory-Manager/releases), open it, and drag **Mac AI Memory Manager.app** into Applications. Open it; the memory-chip icon appears in the menu bar. The release workflow signs and notarizes releases when the repository has the Apple Developer signing secrets configured. The app includes its terms and MIT license in the app's **Terms & License** view, and the DMG includes separate copies of both documents.
 
-Each successful GitHub Actions build also publishes a downloadable DMG artifact on that workflow run. To publish a versioned release, push a tag such as `v1.0.0`.
+Each successful GitHub Actions build also publishes a downloadable DMG artifact on that workflow run. To publish a versioned release, push a tag such as `v1.0.1`.
 
 ### Developer ID signing and notarization
 
@@ -34,6 +34,10 @@ To make releases launch without Gatekeeper warnings, add these repository Action
 - `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
 
 The build signs the app, submits it to Apple for notarization, staples the app and DMG, then uploads the notarized DMG to the GitHub Release. Keep certificate and account passwords in GitHub Secrets; never commit them to the repository.
+
+## License and disclaimer
+
+This project uses the standard, unversioned MIT License. There is no “MIT License version 3.0.” The license and full disclaimer are in [LICENSE](LICENSE) and [TERMS.md](TERMS.md). The software is free and provided “as is,” without warranty or a promise of support. Use it at your own risk. The dashboard is informational and does not change system settings. Read the disclaimer before relying on the displayed estimates or making system configuration decisions.
 
 ## Build from source
 
