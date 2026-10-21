@@ -45,17 +45,15 @@ jobs:
         run: |
           ditto -c -k --keepParent "dist/Mac AI Memory Manager.app" "$RUNNER_TEMP/mac-ai-memory-manager-notary.zip"
           xcrun notarytool submit "$RUNNER_TEMP/mac-ai-memory-manager-notary.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
-          xcrun stapler staple "dist/Mac AI Memory Manager.app"
+          bash scripts/staple-with-retries.sh "dist/Mac AI Memory Manager.app"
       - name: Create DMG
         run: bash scripts/package-dmg.sh
       - name: Notarize and staple DMG
         if: ${{ env.SIGNING_CERT_P12 != '' && env.SIGNING_CERT_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.SIGNING_IDENTITY != '' && env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_SPECIFIC_PASSWORD != '' }}
         run: |
           xcrun notarytool submit "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
-          xcrun stapler staple "dist/Mac AI Memory Manager.app"
-          xcrun stapler staple "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg"
-          xcrun stapler validate "dist/Mac AI Memory Manager.app"
-          xcrun stapler validate "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg"
+          bash scripts/staple-with-retries.sh "dist/Mac AI Memory Manager.app"
+          bash scripts/staple-with-retries.sh "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg"
           spctl --assess --type execute --verbose=4 "dist/Mac AI Memory Manager.app"
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
