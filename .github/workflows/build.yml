@@ -16,14 +16,50 @@ jobs:
       - uses: actions/checkout@v4
       - name: Package app
         run: bash scripts/package-app.sh
-      - name: Upload app artifact
+      - name: Import Developer ID certificate
+        if: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 != '' }}
+        env:
+          CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.BUILD_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo -n "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/developer-id.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+      - name: Sign app with Developer ID
+        if: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 != '' }}
+        env:
+          SIGNING_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
+        run: |
+          codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" "dist/Mac AI Memory Manager.app"
+          codesign --verify --deep --strict --verbose=2 "dist/Mac AI Memory Manager.app"
+      - name: Create DMG
+        run: bash scripts/package-dmg.sh
+      - name: Notarize and staple DMG
+        if: ${{ secrets.DEVELOPER_ID_APPLICATION_P12 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool submit "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+          xcrun stapler staple "dist/Mac AI Memory Manager.app"
+          xcrun stapler staple "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg"
+      - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mac-AI-Memory-Manager-macOS-arm64
-          path: dist/*.zip
+          name: Mac-AI-Memory-Manager-macOS-arm64-dmg
+          path: dist/*.dmg
           if-no-files-found: error
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --title "Mac AI Memory Manager $GITHUB_REF_NAME" --generate-notes
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Mac AI Memory Manager $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" dist/*.dmg --clobber

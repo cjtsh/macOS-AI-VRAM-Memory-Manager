@@ -17,16 +17,16 @@ This app is read-only. It does not run privileged commands, alter kernel setting
 
 ## Download and run
 
-Download the latest ZIP from [GitHub Releases](https://github.com/cjtsh/macOS-AI-VRAM-Memory-Manager/releases), unzip it, and drag **Mac AI Memory Manager.app** into Applications. Open it; the memory-chip icon appears in the menu bar. The first launch may require Control-click → **Open** because this app is not notarized with an Apple Developer ID yet.
+Download the latest DMG from [GitHub Releases](https://github.com/cjtsh/macOS-AI-VRAM-Memory-Manager/releases), open it, and drag **Mac AI Memory Manager.app** into Applications. Open it; the memory-chip icon appears in the menu bar. The release workflow can sign and notarize the app when the repository has the Apple Developer signing secrets configured; without them, it produces an unsigned DMG that Gatekeeper may block.
 
-Each successful GitHub Actions build also publishes a downloadable ZIP artifact on that workflow run. To publish a versioned release, push a tag such as `v1.0.0`.
+Each successful GitHub Actions build also publishes a downloadable DMG artifact on that workflow run. To publish a versioned release, push a tag such as `v1.0.0`.
 
 ## Build from source
 
 Requires macOS 14 or later and Swift 6.
 
 ```sh
-bash scripts/package-app.sh
+bash scripts/package-app.sh && bash scripts/package-dmg.sh
 ```
 
 ## License
