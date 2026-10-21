@@ -15,15 +15,19 @@ Apple silicon uses unified memory: CPU and GPU share physical RAM. A GPU allocat
 
 This app is read-only. It does not run privileged commands, alter kernel settings, install launch daemons, or change system configuration. The available-memory figure is an estimate from active, wired, and compressed VM pages; it is not a substitute for macOS Activity Monitor's memory pressure graph.
 
-## Build and run
+## Download and run
+
+Download the latest ZIP from [GitHub Releases](https://github.com/cjtsh/macOS-AI-VRAM-Memory-Manager/releases), unzip it, and drag **Mac AI Memory Manager.app** into Applications. Open it; the memory-chip icon appears in the menu bar. The first launch may require Control-click → **Open** because this app is not notarized with an Apple Developer ID yet.
+
+Each successful GitHub Actions build also publishes a downloadable ZIP artifact on that workflow run. To publish a versioned release, push a tag such as `v1.0.0`.
+
+## Build from source
 
 Requires macOS 14 or later and Swift 6.
 
 ```sh
-swift run
+bash scripts/package-app.sh
 ```
-
-The app appears as a memory-chip icon in the menu bar. Select it to open the live panel.
 
 ## License
 
