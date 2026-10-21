@@ -15,11 +15,17 @@ struct MacAIMemoryManagerApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("AI Memory Manager", id: "dashboard") {
+        WindowGroup("AI Memory Manager") {
             DashboardView(monitor: monitor)
                 .frame(minWidth: 520, minHeight: 560)
         }
         .defaultSize(width: 560, height: 640)
+        .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit AI Memory Manager") { NSApp.terminate(nil) }
+                    .keyboardShortcut("q")
+            }
+        }
     }
 }
 
