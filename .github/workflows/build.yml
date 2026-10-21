@@ -28,7 +28,7 @@ jobs:
         if: ${{ env.SIGNING_CERT_P12 != '' && env.SIGNING_CERT_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.SIGNING_IDENTITY != '' }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          echo -n "$SIGNING_CERT_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          printf '%s' "$SIGNING_CERT_P12" | openssl base64 -d -A -out "$RUNNER_TEMP/developer-id.p12"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -54,6 +54,9 @@ jobs:
           xcrun notarytool submit "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
           xcrun stapler staple "dist/Mac AI Memory Manager.app"
           xcrun stapler staple "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg"
+          xcrun stapler validate "dist/Mac AI Memory Manager.app"
+          xcrun stapler validate "dist/Mac-AI-Memory-Manager-macOS-arm64.dmg"
+          spctl --assess --type execute --verbose=4 "dist/Mac AI Memory Manager.app"
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
